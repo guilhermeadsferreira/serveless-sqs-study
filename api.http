@@ -1,0 +1,9 @@
+@host = https://ahbmv31xee.execute-api.us-east-1.amazonaws.com
+
+### Producer
+POST {{host}}/producer
+Content-Type: application/json
+
+{
+  "message": "Order 2"
+}

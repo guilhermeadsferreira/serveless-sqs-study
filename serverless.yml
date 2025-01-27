@@ -1,9 +1,9 @@
 # "org" ensures this Service is used with the correct Serverless Framework Access Key.
 org: adsforg
 # "app" enables Serverless Framework Dashboard features and sharing them with other Services.
-app: dynamodb-study
+app: sqs-study
 # "service" is the name of this project. This will also be added to your AWS resource names.
-service: dynamodb-study
+service: sqs-study
 
 provider:
   name: aws
@@ -11,11 +11,66 @@ provider:
   region: us-east-1
   deploymentMethod: direct
   architecture: arm64
+  environment:
+    QUEUE_URL: !Ref MyQueue
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+          Resource: !GetAtt MyQueue.Arn
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:Scan
+            - dynamodb:DeleteItem
+            - dynamodb:UpdateItem
+          Resource: !GetAtt PaymentsTable.Arn
 
 functions:
-  hello:
-    handler: src/functions/handler.handler
+  producer:
+    handler: src/functions/producer.handler
     events:
       - httpApi:
-          path: /
-          method: get
+          path: /producer
+          method: post
+
+  consumer:
+    handler: src/functions/consumer.handler
+    events:
+      - sqs:
+          arn: !GetAtt MyQueue.Arn
+          functionResponseType: ReportBatchItemFailures
+
+resources:
+  Resources:
+    MyQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: MyQueue
+        MessageRetentionPeriod: 345600
+        ReceiveMessageWaitTimeSeconds: 20
+        VisibilityTimeout: 30
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt MyDeadLetterQueue.Arn
+          maxReceiveCount: 3
+    MyDeadLetterQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: MyDeadLetterQueue
+        MessageRetentionPeriod: 1209600
+        ReceiveMessageWaitTimeSeconds: 20
+        VisibilityTimeout: 30
+    PaymentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Payments
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
